@@ -1,0 +1,170 @@
+import maya.cmds as cmds
+import re
+
+"""
+________________________________________________________________________________________________________________________________________
+
+
+Create a Facial Ribbon by selecting two curves
+
+by Clement WALLEZ
+
+
+________________________________________________________________________________________________________________________________________
+"""
+
+def createNurbs(*args):
+    
+    #____VARS___________________:
+    sl = cmds.ls(sl=True, sn=True)
+    Curve1 = sl[0]
+    Curve2 = sl[1]
+
+    name = cmds.textField(textFieldEntry, editable = True, q = True, text=True, w = 249)
+    RBN = cmds.intSliderGrp(NF, q=True, field=True , value=True)+1
+    
+    #____Preparer les curves____:
+    cmds.FreezeTransformations(Curve1)
+    cmds.FreezeTransformations(Curve2)
+    cmds.DeleteHistory(Curve1)
+    cmds.DeleteHistory(Curve2)
+    
+    cmds.rebuildCurve(Curve1, rt=0, s=RBN)
+    cmds.rebuildCurve(Curve2, rt=0, s=RBN)
+    cmds.select(Curve1, Curve2)
+    cmds.FreezeTransformations(Curve1)
+    cmds.FreezeTransformations(Curve2)
+    cmds.DeleteHistory(Curve1)
+    cmds.DeleteHistory(Curve2)
+    
+    #____Creation du NurbsCurve_:
+    RIB='Ribbon_'+name
+    cmds.select(Curve1, Curve2)
+    cmds.Loft(Curve1, Curve2, int=1)
+    cmds.rename('polyToCurve1', 'Crv_'+RIB+'_Up')
+    cmds.rename('polyToCurve2', 'Crv_'+RIB+'_Down')
+    
+    #____VARS___________________:
+    RBN = RBN+1
+    A = (1.0/float(RBN-1))
+    
+    #---  init
+    sel = 'loftedSurface1'
+    loft = cmds.listRelatives(sel, s=True)[0]
+    grp = cmds.createNode('transform', n = 'Grp_rivets_'+RIB+'_001')
+    
+    idx = 0
+    
+    for x in range(RBN):
+    
+        #--- Create Locator Rivet and joint under
+        rivet = cmds.spaceLocator( n = 'rivet_'+RIB+'_0'+str(idx+1))[0]
+        jnt = cmds.joint( n = 'Bind_rivet_'+RIB+'_0'+str(idx+1))
+        
+        #---  Create nodes
+        nodes = []
+        
+        nodes.append( cmds.createNode('pointOnSurfaceInfo', n= rivet + '_pOnSurf'  ) )             # 3
+        nodes.append( cmds.createNode('fourByFourMatrix', n= rivet + '_4by4_MTX'  ) )              # 4
+        nodes.append( cmds.createNode('decomposeMatrix', n= rivet + '_dMTX') )                     # 5
+        #- Point on surface info
+        cmds.setAttr( nodes[0] + '.turnOnPercentage', True)
+        cmds.connectAttr( str(loft) + '.worldSpace', nodes[0] + '.is', f=True) 
+    
+        #--- Four By Four Matrix
+        cmds.connectAttr( nodes[0] + '.positionX', nodes[1] + '.in30' )
+        cmds.connectAttr( nodes[0] + '.positionY', nodes[1] + '.in31' )
+        cmds.connectAttr( nodes[0] + '.positionZ', nodes[1] + '.in32' )
+        cmds.connectAttr( nodes[0] + '.normalX', nodes[1] + '.in00' )
+        cmds.connectAttr( nodes[0] + '.normalY', nodes[1] + '.in01' )
+        cmds.connectAttr( nodes[0] + '.normalZ', nodes[1] + '.in02' )
+        cmds.connectAttr( nodes[0] + '.tangentUx', nodes[1] + '.in20' )
+        cmds.connectAttr( nodes[0] + '.tangentUy', nodes[1] + '.in21' )
+        cmds.connectAttr( nodes[0] + '.tangentUz', nodes[1] + '.in22' )
+        cmds.connectAttr( nodes[0] + '.tangentVx', nodes[1] + '.in10' )
+        cmds.connectAttr( nodes[0] + '.tangentVy', nodes[1] + '.in11' )
+        cmds.connectAttr( nodes[0] + '.tangentVz', nodes[1] + '.in12' )
+    
+        #--- Decompose Matrix
+        cmds.connectAttr( nodes[1] + '.output', nodes[2] + '.inputMatrix' )
+    
+        #--- Drive Rivet
+        cmds.connectAttr( nodes[2] + '.outputTranslate', rivet + '.translate' )
+        
+        cmds.connectAttr( nodes[2] + '.outputRotate', rivet + '.rotate' )
+    
+        #--- Add Ctrl attributes to rivet
+        cmds.addAttr(rivet, ln='posU', at='float', min=.0, max=1.0, dv=float(A)*float(idx), k=True)
+        cmds.addAttr(rivet, ln='posV', at='float', min=.0, max=1.0, dv=.5, k=True)
+        
+        cmds.connectAttr( rivet + '.posU', nodes[0] + '.parameterU', f=True)
+        cmds.connectAttr( rivet + '.posV', nodes[0] + '.parameterV', f=True) 
+    
+        #--- Historical intereset
+        for node in nodes :
+            cmds.setAttr( node + '.ihi', 0)
+        
+        cmds.setAttr( rivet + 'Shape.ihi', 0)
+    
+        #--- Clean
+        for attr in ['t', 'r', 's'] :
+            for axis in ['x', 'y', 'z'] :
+                cmds.setAttr('%s.%s%s' %(rivet, attr, axis), k=False)
+        for axis in ['X', 'Y', 'Z'] :
+            cmds.setAttr('%sShape.localPosition%s' %(rivet, axis), k=False, cb=False)
+            cmds.setAttr('%sShape.localScale%s' %(rivet, axis), 0.01)
+        	
+        cmds.parent( rivet, grp)
+        idx+=1
+        
+    cmds.parent( sel, grp)
+        
+    #___Create Driven Joints:
+        
+    import maya.mel as mel
+    mel.eval ('select -r loftedSurface1 .v[0.2] ;')
+    mel.eval('insertKnotSurface -ch 1 -nk 1 -add 1 -ib 0 -rpo 0 loftedSurface1.v[0.2];')
+    mel.eval('select -r loftedSurface1insertedKnotSurface1.v[0.199999850089512] ;')
+    mel.eval("bonesOnCurve 4 0 0;")
+    cmds.delete('loftedSurface1insertedKnotSurface1')
+    
+    #___Rename Driven Joints:
+        
+    cmds.rename('loftedSurface1',RIB)
+    cmds.rename('joint1','DrvJnt_'+name+'_Corner_Down')
+    cmds.rename('joint2','DrvJnt_'+name+'_01_Down')
+    cmds.rename('joint3','DrvJnt_'+name+'_Mid')
+    cmds.rename('joint4','DrvJnt_'+name+'_02_Up')
+    cmds.rename('joint5','DrvJnt_'+name+'_Corner_Up')
+    
+    #___Range ta chambre/ clean up:
+    
+    cmds.group('DrvJnt_'+name+'_Corner_Down', n='Grp_Drv_Jnt_'+name)
+    cmds.parent('Grp_Drv_Jnt_'+name,'ExtraNodes_To_Show')
+    cmds.parent('Ribbon_'+name, world=True)
+    cmds.group('Ribbon_'+name, n='Grp_Ribbon_'+name)
+    cmds.parent('Grp_Ribbon_'+name,'ExtraNodes_To_Show')
+    cmds.parent('Grp_rivets_Ribbon_'+name+'_001','ExtraNodes_To_Show')
+    cmds.parent('Crv_'+RIB+'_Up','ExtraNodes_To_Hide')
+    cmds.parent('Crv_'+RIB+'_Down','ExtraNodes_To_Hide')
+
+
+#window___________________________________________________________________________________________________________
+    
+	
+window= cmds.window( t="Scene Set-up",mnb=False,mxb= False,s=False, menuBar=True ,widthHeight=(250, 200) )
+mainw = cmds.formLayout()
+nm = cmds.frameLayout( label='Ribbon Area', labelAlign='center')
+textFieldEntry = cmds.textField(w = 248, editable = True)
+
+FS = cmds.frameLayout(  p= nm, label="CVs Number", labelAlign='center' )
+cmds.rowColumnLayout( p = FS, numberOfColumns=2, columnWidth=[(1, 60), (2, 190)] )
+cmds.text( label='CVs', align='left' )
+NF = cmds.intSliderGrp( field=True, min=2, max=50, step=1,value=8)
+
+cmds.columnLayout()
+
+eylup = cmds.frameLayout( p= nm, label="Connections", labelAlign='center' )
+cmds.button(l='Create Nurbs', align='center', c=createNurbs)
+
+cmds.showWindow(window)

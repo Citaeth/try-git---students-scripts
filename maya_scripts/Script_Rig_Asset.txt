@@ -1,0 +1,102 @@
+from maya import cmds
+import maya.mel as mel
+
+def cleanupmesh(sel):
+    for x in sel:
+        cmds.select(x)
+        cmds.DeleteHistory(x)
+        cmds.FreezeTransformations(x)
+    
+def MatrixConstraint(ctrl2,ofcstr):
+    # First select the parent then the Child
+    Parent01 = ctrl2
+    Child    = ofcstr
+    
+    #create the MATRIX nodes
+    multMTX  = cmds.shadingNode("multMatrix",asUtility=True, name = "mMTX_CSTR_"+Child)
+    dCompMTX = cmds.shadingNode("decomposeMatrix", asUtility=True, name = "dMTX_CSTR_"+Child)
+    multMTXoffset = cmds.shadingNode("multMatrix",asUtility=True, name = "mMTX_offset_"+Child)
+    dCompMTXoffset = cmds.shadingNode("decomposeMatrix", asUtility=True, name = "dMTX_parentOffset_"+Child)
+    nodes = [dCompMTXoffset, dCompMTX, multMTX]
+
+    #Matrix connections
+    cmds.connectAttr(Parent01+".worldInverseMatrix[0]",multMTXoffset+".matrixIn[0]")
+    cmds.connectAttr(Child+".worldMatrix[0]",multMTXoffset+".matrixIn[1]")
+    cmds.connectAttr(multMTXoffset+".matrixSum",dCompMTXoffset+".inputMatrix")
+    cmds.disconnectAttr (multMTXoffset+".matrixSum",dCompMTXoffset+".inputMatrix")
+    cmds.delete(multMTXoffset)
+    cmds.connectAttr(dCompMTXoffset+".inputMatrix",multMTX+".matrixIn[0]")
+    cmds.connectAttr(Parent01+".worldMatrix[0]",multMTX+".matrixIn[1]")
+    cmds.connectAttr(Child+".parentInverseMatrix[0]",multMTX+".matrixIn[2]")
+    cmds.connectAttr(multMTX+".matrixSum",dCompMTX+".inputMatrix")
+    cmds.connectAttr(dCompMTX+".outputTranslate",Child+".t")
+    cmds.connectAttr(dCompMTX+".outputRotate",Child+".r")
+    cmds.connectAttr(dCompMTX+".outputScale",Child+".s")
+     
+    # delete Historic
+    for node in nodes :
+        cmds.setAttr( node + '.ihi', 0)
+        
+def autorigAsset(*args):
+    text = cmds.textField(textFieldEntry, editable = True, q = True, text=True, w = 249)
+    
+    sel = cmds.ls(sl=True)
+    rig = []
+    mesh = []
+    WALK =[]
+    
+    grpGEN = cmds.createNode('transform', name = text)
+    grpRIG = cmds.createNode('transform', name = 'RIG_'+text)
+    grpMESH = cmds.createNode('transform', name = 'MESH_'+text)
+    cmds.parent(grpMESH, grpRIG, grpGEN)
+    
+    cleanupmesh(sel)
+    
+    for x in sel:
+        
+        ofcstr = cmds.createNode('transform',name="Offset_cstr_"+x)
+        cmds.matchTransform(ofcstr, x)
+        cmds.parent(x, ofcstr)
+        cmds.parent(ofcstr, grpMESH) 
+        
+        bbox = cmds.exactWorldBoundingBox(x)
+        xValue = bbox[3]-bbox[0]
+        zValue = bbox[5]-bbox[2]
+        averrage = (xValue+zValue)/2
+        
+        ctrl = cmds.circle(name="CTRL_WORLD_"+x.split(":")[-1].split("_", 1)[-1], nr=[0,1,0], radius=averrage/1.2)[0]
+        ctrl2 = cmds.circle(name="CTRL_ANIM_"+x.split(":")[-1].split("_", 1)[-1], nr=[0,1,0], radius=averrage/1.5)[0]
+        cmds.delete(ctrl, constructionHistory=True)
+        cmds.delete(ctrl2, constructionHistory=True)
+        offset = cmds.createNode('transform',name="Offset_"+x.split(":")[-1])
+        cmds.parent(ctrl2, ctrl)
+        cmds.parent(ctrl, offset)
+        
+        WALK.append(ctrl2)
+        
+        cmds.matchTransform(offset, x)
+        cmds.setAttr(offset+'.translateY', bbox[1])
+        MatrixConstraint(ctrl2,ofcstr)
+        cmds.connectAttr(ctrl+".visibility",ctrl2+".visibility")
+        cmds.connectAttr(ctrl2+".visibility",ofcstr+".visibility")
+        
+        for y in [ctrl, ctrl2]:
+            shape = cmds.listRelatives(y, shapes=True)[0]
+            cmds.setAttr(y+".overrideEnabled", 1)
+        cmds.setAttr(ctrl+".overrideColor", 13 )
+        cmds.setAttr(ctrl2+".overrideColor", 17 )
+            
+        rig.append(offset)
+        mesh.append(x)
+                             
+    cmds.parent(rig, grpRIG)
+    cmds.select(deselect=True)
+    
+#window_________________________________________
+
+wind = cmds.window(title='AUTO RIGG ASSET', s = True, mnb = False, mxb = False, widthHeight=(250, 50) )
+cmds.formLayout()
+cmds.columnLayout( adjustableColumn=True )
+textFieldEntry = cmds.textField(w = 248, editable = True)
+cmds.button( label='RIGG IT', command= autorigAsset )
+cmds.showWindow(wind)

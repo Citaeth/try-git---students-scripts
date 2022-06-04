@@ -1,0 +1,161 @@
+import maya.cmds as cmds
+import re
+
+"""
+________________________________________________________________________________________________________________________________________
+
+
+Create a basic Tentacle Rig by selecting a curve and a geometry
+
+by Clement WALLEZ
+
+
+________________________________________________________________________________________________________________________________________
+"""
+
+def MatriceAll(x,y):
+    
+    Master = x
+    Slave = y
+
+    # Creation des differents Nodes Matrix
+
+    MultMatX  = cmds.shadingNode('multMatrix',asUtility=True, n='MultMatX_'+Slave)
+    DecMatX = cmds.shadingNode('decomposeMatrix', asUtility=True, n='DecMatX_'+Slave)
+
+    # Connexion de l'Offset, du Slave et du Master dans le Multiply Matrix puis dans le Decompose Matrix
+
+    cmds.connectAttr(Master+'.worldMatrix[0]',MultMatX+'.matrixIn[1]')
+    cmds.connectAttr(Slave+'.parentInverseMatrix[0]',MultMatX+'.matrixIn[2]')
+    cmds.connectAttr(MultMatX+'.matrixSum',DecMatX+'.inputMatrix')
+
+    # Connexion des outputs des Attribts du Decompose Matrix dans les input du Slave
+
+    cmds.connectAttr(DecMatX+'.outputTranslate',Slave+'.t')
+    cmds.connectAttr(DecMatX+'.outputRotate',Slave+'.r')
+    cmds.connectAttr(DecMatX+'.outputScale',Slave+'.s')
+
+def autorigtentacule(*args):
+    
+    #____VARS___________________:
+    sl = cmds.ls(sl=True, sn=True)
+    Curve1 = sl[0]
+    
+    namet = cmds.textField(textFieldEntry, editable = True, q = True, text=True, w = 249)
+    JNTN = cmds.intSliderGrp(NB, q=True, field=True , value=True)
+    CtrlN = cmds.intSliderGrp(NC, q=True, field=True , value=True)
+    JNTN = str(JNTN)
+    CtrlN = str(CtrlN)
+    
+    #____Preparer les curves____:
+    cmds.FreezeTransformations(Curve1)
+    cmds.DeleteHistory(Curve1)
+    
+    #_____Creer chaine Bind_____: 
+    mel.eval("bonesOnCurve " +JNTN+ " 0 0;")
+    
+    r=0;
+    JNTN_int = int(JNTN)
+    rbo=13;
+    cmds.select('joint'+str(rbo))
+    
+    while r <= JNTN_int:
+        rbn=r+1
+        rbo_str=str(rbo)
+        rbn_str=str(rbn)
+        cmds.rename('joint'+rbo_str, namet+'_bind_0'+rbn_str)
+        cmds.joint(namet+'_bind_0'+rbn_str, e=True, zso=True, oj='xyz', sao='yup' )
+        rbo=rbo+1
+        r= r+1
+        
+    cmds.setAttr (namet+'_bind_0'+rbn_str+'.jointOrientX', 0)
+    cmds.setAttr (namet+'_bind_0'+rbn_str+'.jointOrientY', 0)
+    cmds.setAttr (namet+'_bind_0'+rbn_str+'.jointOrientZ', 0)
+    
+    offsetb = cmds.group(em=True, n=namet+'_bind_01_Offset')
+    cmds.matchTransform(offsetb, namet+'_bind_01')
+    cmds.parent(namet+'_bind_01', offsetb)
+    
+    cmds.ikHandle( sj=namet+'_bind_01', ee=namet+'_bind_0'+rbn_str, sol='ikSplineSolver' , ccv=True, scv=False)
+    cmds.rename('ikHandle1','IKSpineHandle_'+namet)
+    cmds.rename('curve6', 'curve_'+namet)
+    
+    #_____Creer chaine FK et CTRLs_____:
+        
+    cmds.select(Curve1)
+    mel.eval("bonesOnCurve " +CtrlN+ " 0 0;")
+    
+    rc=0;
+    CtrlN_int=int(CtrlN)
+    rco=13;
+    cmds.select('joint'+str(rco))
+    cmds.joint('joint'+str(rco), e=True, zso=True, oj='xyz', sao='yup' )
+    
+    while rc <= CtrlN_int:
+        rcn=rc+1
+        rco_str=str(rco)
+        rcn_str=str(rcn)
+        rc_str=str(rc)
+        cmds.rename('joint'+rco_str, 'jnt_'+namet+'_FK_0'+rcn_str)
+        cmds.joint('jnt_'+namet+'_FK_0'+rcn_str, e=True, zso=True, oj='xyz', sao='yup')
+        if rc == CtrlN_int:
+            cmds.setAttr ('jnt_'+namet+'_FK_0'+rcn_str+'.jointOrientX', 0)
+            cmds.setAttr ('jnt_'+namet+'_FK_0'+rcn_str+'.jointOrientY', 0)
+            cmds.setAttr ('jnt_'+namet+'_FK_0'+rcn_str+'.jointOrientZ', 0)
+        offsetj = cmds.group(em=True, n='jnt_'+namet+'_FK_0'+rcn_str+'_Offset')
+        cmds.matchTransform(offsetj, 'jnt_'+namet+'_FK_0'+rcn_str)
+        cmds.parent('jnt_'+namet+'_FK_0'+rcn_str, offsetj)
+        if rcn>1:
+            cmds.parent('jnt_'+namet+'_FK_0'+rcn_str+'_Offset', 'jnt_'+namet+'_FK_0'+rc_str)
+        
+        cmds.circle( nr=(0, 0, 1), c=(0, 0, 0), r=5 )
+        ctrlfk = cmds.rename('nurbsCircle1', 'CTRL_'+namet+'_FK_0'+rcn_str)
+        cmds.matchTransform(ctrlfk, 'jnt_'+namet+'_FK_0'+rcn_str)
+        offsetc = cmds.group(em=True, n=ctrlfk+'_Offset')
+        cmds.matchTransform(offsetc, ctrlfk)
+        cmds.parent(ctrlfk, offsetc)
+        
+        if rcn>1:
+            cmds.parent('CTRL_'+namet+'_FK_0'+rcn_str+'_Offset', 'CTRL_'+namet+'_FK_0'+rc_str)
+        
+        MatriceAll('CTRL_'+namet+'_FK_0'+rcn_str, 'jnt_'+namet+'_FK_0'+rcn_str)
+        
+        rco=rco+1
+        rc= rc+1
+        
+    cmds.select('curve_'+namet)
+    sj=1
+    CtrlN_int=CtrlN_int+1
+    while sj <= CtrlN_int:
+        sj_str=str(sj)
+        cmds.select('jnt_'+namet+'_FK_0'+sj_str, add=True)
+        sj=sj+1
+        
+    cmds.bindSkin( tsb=True )
+
+
+
+#window___________________________________________________________________________________________________________
+    
+	
+window= cmds.window( t="AutoRig Tentacle",mnb=False,mxb= False,s=False, menuBar=True ,widthHeight=(250, 205) )
+mainw = cmds.formLayout()
+nt = cmds.frameLayout( label='tentacle name', labelAlign='center')
+textFieldEntry = cmds.textField(w = 248, editable = True)
+
+nm = cmds.frameLayout( label='Binds number', labelAlign='center')
+cmds.rowColumnLayout( p = nm, numberOfColumns=2, columnWidth=[(1, 60), (2, 190)] )
+cmds.text( label='Joints', align='left')
+NB = cmds.intSliderGrp( field=True, min=2, max=50, step=1,value=15)
+
+nc = cmds.frameLayout(p = nm, label='Controlers number', labelAlign='center')
+cmds.rowColumnLayout( p = nc, numberOfColumns=2, columnWidth=[(1, 60), (2, 190)] )
+cmds.text( label='CTRLs', align='left')
+NC = cmds.intSliderGrp( field=True, min=2, max=50, step=1,value=8)
+
+cmds.columnLayout()
+
+eylup = cmds.frameLayout( p= nm, label="Connections", labelAlign='center' )
+cmds.button(l='Create Tentacules Rig', align='center', c=autorigtentacule)
+
+cmds.showWindow(window)
