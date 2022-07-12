@@ -1,3 +1,6 @@
+from ast import While
+from copy import copy
+from distutils.dep_util import newer_pairwise
 import sys
 import os
 from PyQt5 import QtGui
@@ -7,6 +10,8 @@ from PyQt5 import QtGui as qtg
 from PyQt5 import QtCore as qtc
 import shutil
 from pathlib import Path
+
+#---- Script by Clement Wallez----
 
 class SceneWindowSource(QWidget): #window called to define the source
 
@@ -302,7 +307,10 @@ class MainWindow(QWidget): #Create Main Window Class
         writefile = open(self.scenes_list_gen_utl, "a", encoding="utf-8")
         for item in list_scene:
             item = str(item)
-            writefile.write("%s\n" % item)
+            print(item)
+            if not '}' in item[-5:]:
+                writefile.write("%s\n" % item)
+                print(item)
         writefile.close()
 
     #------Same in the all link scene
@@ -326,17 +334,18 @@ class MainWindow(QWidget): #Create Main Window Class
 
                     if data != "":
                         if '.ma' in data:
-                            with open(data) as scenefile:
-                                for line in scenefile:
-                                    self.src_path_min = self.src_path.lower()
-                                    line_min = line.lower()
-                                    if (self.src_path_min) in line_min:
-                                        path_in_scene = line.rsplit('"', 2)[1]
+                            if os.path.exists(data):
+                                with open(data) as scenefile:
+                                    for line in scenefile:
+                                        self.src_path_min = self.src_path.lower()
+                                        line_min = line.lower()
+                                        if (self.src_path_min) in line_min:
+                                            path_in_scene = line.rsplit('"', 2)[1]
 
-                                        list_all.append(path_in_scene)
-                                        for i in list_all:
-                                            if i not in list_unique:
-                                                list_unique.append(i)
+                                            list_all.append(path_in_scene)
+                                            for i in list_all:
+                                                if i not in list_unique:
+                                                    list_unique.append(i)
 
                             writefile = open(self.scenes_list_utl_x, "a", encoding="utf-8")
                             for item in list_unique:
@@ -383,9 +392,10 @@ class MainWindow(QWidget): #Create Main Window Class
             writefile = open(self.scenes_list_gen_utl, "a", encoding="utf-8")
             for item in list_scene:
                 item = str(item)
-                writefile.write("%s\n" % item)
+                if not '}' in item[-5:]:
+                    writefile.write("%s\n" % item)
             writefile.close()
-        
+    
     #-------- create Directories 
 
         self.dst_item = self.dst_path + '/' + self.src_item
@@ -450,8 +460,45 @@ class MainWindow(QWidget): #Create Main Window Class
                 path = Path(path)
                 path.mkdir(parents=True, exist_ok=True)
 
-    #-------- copy scenes in news directories                
+
+    #-------- find and copy workspace.mel 
         
+        findW = self.scene_path.rsplit('/', 1)[0]
+        print(findW)
+        while not os.path.exists(findW+'/workspace.mel'):
+            findW = findW.rsplit('/', 1)[0]
+            if findW== '':
+                print('no workspace')
+                break
+            print(findW)
+        else:
+            print("je l'ai!")
+
+            findW = findW.lower()
+            o=(findW.lower().split(self.src_path_l))
+            c=0
+            p=0
+            for w in o:
+                o[c]=findW[p:p+len(w)]
+                p=p+len(self.src_path_l+w)
+                c+=1
+            print(self.dst_item.join(o))
+            newW = self.dst_item.join(o)
+
+            newW = newW.replace('\\', '/')+'/workspace.mel'
+            data_src=findW.replace('\\', '/')+'/workspace.mel'
+            print(self.src_path)
+            print(self.dst_item)
+            print(newW)
+            print(findW)
+            if not os.path.exists(newW):
+                data_src = data_src.replace('\n', '')
+                data_dest = newW.replace('\n', '')
+                shutil.copyfile(data_src, data_dest)
+
+
+    #-------- copy scenes in news directories                
+       
         with open(self.scenes_list_gen_utl, 'r+') as f:
             lines = f.readlines()
             f.seek(0)
@@ -486,7 +533,8 @@ class MainWindow(QWidget): #Create Main Window Class
                 if not os.path.exists(new_scene):
                     data_src = data_src.replace('\n', '')
                     data_dest = new_scene.replace('\n', '')
-                    shutil.copyfile(data_src, data_dest)
+                    if os.path.exists(data_src):
+                        shutil.copyfile(data_src, data_dest)
 
     #--------- repath all in scenes
                     temp = self.dst_item+'scene_temp.txt'
@@ -552,7 +600,6 @@ class MainWindow(QWidget): #Create Main Window Class
 
     #-------- copy files in news directories 
         
-
         with open(self.other_list_utl, 'r+') as f:
             lines = f.readlines()
             f.seek(0)
